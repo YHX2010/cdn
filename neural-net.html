@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>3D Neural Network</title>
+    <style> body { margin: 0; overflow: hidden; } </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdmirror.com/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        // 1. 神经网络数据定义
+        const inputNum = 8;    // 输入层神经元数
+        const outputNum = 8;   // 输出层神经元数
+        const hiddenWidth = 8; // 隐藏层宽
+        const hiddenHeight = 8;// 隐藏层高
+        const hiddenNum = 8;   // 隐藏层层数
+        console.log("神经网络参数：", inputNum, outputNum, hiddenWidth, hiddenHeight, hiddenNum);
+
+        const nColors = [0x33ff33, 0x99ccff, 0xff9933]
+        const inputColor = 0x33ff33;
+        const hiddenColor = 0x99ccff;
+        const outputColor = 0xff9933;
+        console.log("神经网络颜色：", nColors);
+
+        // 输入输出数据
+        const inputData = [Math.random(), Math.random()];
+        const outputData = [Math.random(), Math.random()];
+
+        // 权重：输入层到隐藏层、隐藏层之间、隐藏层到输出层
+        const weights_input_hidden = [];
+        for (let i = 0; i < inputNum * hiddenWidth * hiddenHeight; i++) {
+            weights_input_hidden.push(Math.random() * 2 - 1);
+        }
+        const weights_hidden = [];
+        for (let l = 0; l < hiddenNum - 1; l++) {
+            const layerWeights = [];
+            for (let i = 0; i < hiddenWidth * hiddenHeight * hiddenWidth * hiddenHeight; i++) {
+                layerWeights.push(Math.random() * 2 - 1);
+            }
+            weights_hidden.push(layerWeights);
+        }
+        const weights_hidden_output = [];
+        for (let i = 0; i < hiddenWidth * hiddenHeight * outputNum; i++) {
+            weights_hidden_output.push(Math.random() * 2 - 1);
+        }
+
+        console.log("神经网络权重：", weights_input_hidden, weights_hidden, weights_hidden_output);
+
+        // 2. three.js 场景初始化
+
+        // 1. 初始化场景、相机、渲染器
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 15;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 2. 控制器
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // 3. 光源
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+        pointLight.position.set(10, 10, 10);
+        scene.add(pointLight);
+
+        // 3. 创建神经元节点
+        const neurons = [];
+        const neuronPositions = [];
+        const spacing = 3;
+        const neuronSize = 0.05;
+
+        let inZ = -(hiddenNum + 1) * spacing / 2; // 输入层 Z 位置
+        let outZ = (hiddenNum + 1 - (hiddenNum + 1) / 2) * spacing; // 输出层 Z 位置
+
+        // 输入层
+        for (let x = 0; x < inputNum; x++) {
+            const geometry = new THREE.SphereGeometry(neuronSize, 32, 32);
+            const material = new THREE.MeshPhongMaterial({ color: inputColor, emissive: 0x222244, shininess: 100 });
+            const neuron = new THREE.Mesh(geometry, material);
+            neuron.position.x = (x - (inputNum - 1) / 2) * spacing;
+            neuron.position.y = 0;
+            neuron.position.z = inZ
+            scene.add(neuron);
+            neurons.push(neuron);
+            neuronPositions.push({x, y: 0, z: 0, pos: neuron.position, type: 'input'});
+        }
+
+        // 隐藏层
+        for (let l = 0; l < hiddenNum; l++) {
+            for (let x = 0; x < hiddenWidth; x++) {
+                for (let y = 0; y < hiddenHeight; y++) {
+                    const geometry = new THREE.SphereGeometry(neuronSize, 32, 32);
+                    const material = new THREE.MeshPhongMaterial({ color: hiddenColor, emissive: 0x222244, shininess: 100 });
+                    const neuron = new THREE.Mesh(geometry, material);
+                    neuron.position.x = (x - (hiddenWidth - 1) / 2) * spacing;
+                    neuron.position.y = (y - (hiddenHeight - 1) / 2) * spacing;
+                    neuron.position.z = (l + 1 - (hiddenNum + 1) / 2) * spacing;
+                    scene.add(neuron);
+                    neurons.push(neuron);
+                    neuronPositions.push({x, y, z: l + 1, pos: neuron.position, type: 'hidden'});
+                }
+            }
+        }
+
+        // 输出层
+        for (let x = 0; x < outputNum; x++) {
+            const geometry = new THREE.SphereGeometry(neuronSize, 32, 32);
+            const material = new THREE.MeshPhongMaterial({ color: outputColor, emissive: 0x222244, shininess: 100 });
+            const neuron = new THREE.Mesh(geometry, material);
+            neuron.position.x = (x - (outputNum - 1) / 2) * spacing;
+            neuron.position.y = 0;
+            neuron.position.z = outZ;
+            scene.add(neuron);
+            neurons.push(neuron);
+            neuronPositions.push({x, y: 0, z: hiddenNum + 1, pos: neuron.position, type: 'output'});
+        }
+
+        // 4. 创建连接线
+        const inputLineColor = 0x28fa28; // 输入层连接线颜色
+        const lineColor = 0x66ccff;
+        const outputLineColor = 0xfa9428; // 输出层连接线颜色
+
+        // 记录所有连接线对象
+        const connections = [];
+
+        // 输入层到第一个隐藏层
+        for (let i = 0; i < inputNum; i++) {
+            for (let j = 0; j < hiddenWidth * hiddenHeight; j++) {
+                const a = neuronPositions[i];
+                const b = neuronPositions[inputNum + j];
+                const weightIdx = i * hiddenWidth * hiddenHeight + j;
+                const weight = weights_input_hidden[weightIdx];
+                const opacity = Math.min(0.5, Math.max(0.01, 0.3 * Math.abs(weight)));
+                const geometry = new THREE.BufferGeometry().setFromPoints([a.pos, b.pos]);
+                const material = new THREE.LineBasicMaterial({ color: inputLineColor, transparent: true, opacity: opacity, linewidth: 1 });
+                const line = new THREE.Line(geometry, material);
+                scene.add(line);
+                connections.push({line, type: 'input_hidden', weightIdx});
+            }
+        }
+
+        // 隐藏层之间
+        for (let l = 0; l < hiddenNum - 1; l++) {
+            const offsetA = inputNum + l * hiddenWidth * hiddenHeight;
+            const offsetB = inputNum + (l + 1) * hiddenWidth * hiddenHeight;
+            for (let i = 0; i < hiddenWidth * hiddenHeight; i++) {
+                for (let j = 0; j < hiddenWidth * hiddenHeight; j++) {
+                    const a = neuronPositions[offsetA + i];
+                    const b = neuronPositions[offsetB + j];
+                    const weightIdx = i * hiddenWidth * hiddenHeight + j;
+                    const weight = weights_hidden[l][weightIdx];
+                    const opacity = Math.min(0.5, Math.max(0.01, 0.25 * Math.abs(weight)));
+                    const geometry = new THREE.BufferGeometry().setFromPoints([a.pos, b.pos]);
+                    const material = new THREE.LineBasicMaterial({ color: lineColor, transparent: true, opacity: opacity, linewidth: 1 });
+                    const line = new THREE.Line(geometry, material);
+                    scene.add(line);
+                    connections.push({line, type: 'hidden_hidden', layer: l, weightIdx});
+                }
+            }
+        }
+
+        // 最后一个隐藏层到输出层
+        const offsetHidden = inputNum + (hiddenNum - 1) * hiddenWidth * hiddenHeight;
+        const offsetOutput = inputNum + hiddenNum * hiddenWidth * hiddenHeight;
+        for (let i = 0; i < hiddenWidth * hiddenHeight; i++) {
+            for (let j = 0; j < outputNum; j++) {
+                const a = neuronPositions[offsetHidden + i];
+                const b = neuronPositions[offsetOutput + j];
+                const weightIdx = i * outputNum + j;
+                const weight = weights_hidden_output[weightIdx];
+                const opacity = Math.min(0.5, Math.max(0.01, 0.3 * Math.abs(weight)));
+                const geometry = new THREE.BufferGeometry().setFromPoints([a.pos, b.pos]);
+                const material = new THREE.LineBasicMaterial({ color: outputLineColor, transparent: true, opacity: opacity, linewidth: 1 });
+                const line = new THREE.Line(geometry, material);
+                scene.add(line);
+                connections.push({line, type: 'hidden_output', weightIdx});
+            }
+        }
+
+        // 6. 动画
+        function animate() {
+            requestAnimationFrame(animate);
+
+            neurons.forEach(neuron => {
+                neuron.scale.x = neuron.scale.y = neuron.scale.z = 1 + Math.sin(Date.now() * 0.001) * 0.1;
+            });
+
+            // 连接线不再频闪
+            // connections.forEach(conn => {
+            //     conn.material.opacity = 0.3 + Math.sin(Date.now() * 0.002) * 0.2;
+            // });
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // 7. 交互
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        window.addEventListener('mousemove', (event) => {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(neurons);
+
+            neurons.forEach(neuron => {
+                neuron.material.color.setHex(
+                    function () {
+                        if (neuron.position.z == inZ) return 0x33ff33;
+                        else if (neuron.position.z == outZ) return 0xff9933;
+                        else return 0x99ccff;
+                    }()
+                );
+            });
+
+            if (intersects.length > 0) {
+                intersects[0].object.material.color.setHex(0xff0000);
+            }
+        });
+
+        window.addEventListener('click', () => {
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(neurons);
+            if (intersects.length > 0) {
+                console.log("Clicked neuron:", intersects[0].object);
+            }
+        });
+
+        // 8. 窗口大小调整
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function updateConnections(){
+            // 更新连接线透明度
+            connections.forEach(conn => {
+                let weight = 0;
+                if (conn.type === 'input_hidden') {
+                    weight = weights_input_hidden[conn.weightIdx];
+                    conn.line.material.opacity = Math.min(0.5, Math.max(0.01, 0.1 * Math.abs(weight)));
+                } else if (conn.type === 'hidden_hidden') {
+                    weight = weights_hidden[conn.layer][conn.weightIdx];
+                    conn.line.material.opacity = Math.min(0.5, Math.max(0.01, 0.25 * Math.abs(weight)));
+                } else if (conn.type === 'hidden_output') {
+                    weight = weights_hidden_output[conn.weightIdx];
+                    conn.line.material.opacity = Math.min(0.5, Math.max(0.01, 0.25 * Math.abs(weight)));
+                }
+                conn.line.material.needsUpdate = true;
+            });
+        }
+
+        // 实时更新函数
+        function updateNetwork() {
+            // 随机更新权重
+            for (let i = 0; i < weights_input_hidden.length; i++) {
+                weights_input_hidden[i] = Math.random() * 2 - 1;
+            }
+            for (let l = 0; l < weights_hidden.length; l++) {
+                for (let i = 0; i < weights_hidden[l].length; i++) {
+                    weights_hidden[l][i] = Math.random() * 2 - 1;
+                }
+            }
+            for (let i = 0; i < weights_hidden_output.length; i++) {
+                weights_hidden_output[i] = Math.random() * 2 - 1;
+            }
+            updateConnections();
+        }
+
+        // 每秒更新一次
+        setInterval(updateNetwork, 1000);
+    </script>
+</body>
+</html>
